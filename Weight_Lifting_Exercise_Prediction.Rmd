@@ -1,0 +1,133 @@
+---
+title: "Weight_Lifting_Exercise_Prediction"
+author: "Mohamed Soliman"
+date: "October 5, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Data and librarys
+
+First we start by loading the training and test datastes.
+
+```{r cars}
+
+library(caret)
+
+library(randomForest)
+
+pml.training <- read.csv("pml-training.csv", stringsAsFactors=FALSE)
+
+pml.testing <- read.csv("pml-training.csv", stringsAsFactors=FALSE)
+```
+
+## Data Exploration
+
+Let's do a quick summary.
+
+```{r pressure, echo=FALSE}
+summary(pml.training)
+```
+
+We notice that there are a lot of columns with NA values and all the columns with NA's have the same numer of missing values, let's take a sample coulmn and calculate the proprtion of NA in that column.
+
+```{r}
+prop.table(table(is.na(pml.training$var_roll_dumbbell))) * 100
+```
+
+Well that means that about 98% of the column length is NA, and this generalize to all other coulmns with NA's as they have the same number of missing values.
+
+So we will simply remove all the columns with NA.
+
+```{r}
+non.na.pml.training <- pml.training[ , colSums(is.na(pml.training)) == 0]
+
+non.na.pml.testing <- pml.testing[ , colSums(is.na(pml.testing)) == 0]
+```
+
+Next we notice that the columns of typ `char` have a lot of empty cells and won't be a significant predictor, so i decided to only focus on numeric columns in building my model.
+
+```{r}
+numeric.pml.training <- non.na.pml.training[ , sapply(non.na.pml.training , is.numeric)]
+
+numeric.pml.testing <- non.na.pml.testing[ , sapply(non.na.pml.testing , is.numeric)]
+```
+
+So far so good, now let's summary the data for last time before building the model.
+
+```{r}
+summary(numeric.pml.training)
+```
+
+In my point of view the first 3 columns `X | raw_timestamp_part_1 |  raw_timestamp_part_2` will not add any value in predicting the class of excersice, so i will remove them. 
+
+```{r}
+numeric.pml.training <- subset(numeric.pml.training, select = -c(X,raw_timestamp_part_1,raw_timestamp_part_2) )
+
+
+numeric.pml.testing <- subset(numeric.pml.testing, select = -c(X,raw_timestamp_part_1,raw_timestamp_part_2) )
+```
+
+## Building the model
+
+There are a lot of columns in the final dataset and i don't know which predictors are importnat than others, so i will ask PCA `principle component analysis` to help me finding the minimum amount of columns that explains the most variations in the response variable i.e Excercise Class
+
+
+I will use the caret preprocess function to build the PCA model but since skewness and the magnitude of the variables influence the resulting PCs i will do some transformations (BoxCox, centre, scale)
+
+```{r}
+trans <- preProcess(numeric.pml.training, method = c("BoxCox", "center", "scale", "pca"))
+```
+
+Now predict PCA components 
+
+```{r}
+pc <- predict(trans, numeric.pml.training)
+
+dim(pc)
+```
+
+Using pca we converted our original set of features (more than 100) to only 25 feature or component that explains most of variation in response variable.
+
+This deduction in number of features will help significantly in training time.
+
+## Random Forest
+
+Now i will use the new set of pca components i.e new set of features, to build a random forest model, but first let's add the response variable to the data set 
+
+```{r}
+pc$class <- pml.training[, "classe"]
+```
+
+Let's build a randomforest model with 1000 random tree.
+
+```{r}
+my_forest <- randomForest(as.factor(class) ~ ., data = pc, ntree = 1000)
+```
+
+p.s The random forest algorithm train each tree on different random subset of training data and subset of features, so no need to cross validation.
+
+
+Now let's make a prediction on test data to test in-sample error 
+
+```{r}
+my_prediction <- predict(my_forest, pc)
+
+confusionMatrix(my_prediction, pc$class)
+```
+
+we got very very high accuracy (it may be warning for overfitting).
+
+
+I had confirmed this by making a prediction on 20 case on test set and i got 100% accuracy, but for security concerns i won't share the output here.
+
+
+
+
+
+
+
+
